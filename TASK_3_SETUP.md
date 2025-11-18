@@ -88,12 +88,27 @@ Currently, if tenant is not found, the middleware continues without tenant conte
 
 ## Runtime Note
 
-⚠️ **Important**: This middleware uses Node.js runtime (not Edge runtime) because it needs to use Prisma. This is configured with `export const runtime = 'nodejs'`.
+⚠️ **Important**: Next.js middleware runs on Edge runtime by default, which cannot use Prisma. 
 
-For production at scale, consider:
-- Using Prisma Accelerate (Edge-compatible)
-- Caching tenant lookups
-- Moving tenant resolution to API routes
+**Solution**: The middleware only extracts the subdomain and passes it as a header (`x-tenant-subdomain`). The actual tenant lookup happens in route handlers/API routes which run on Node.js runtime and can use Prisma.
+
+**How it works**:
+1. Middleware (Edge runtime) extracts subdomain → sets `x-tenant-subdomain` header
+2. Route handlers (Node.js runtime) read header → perform tenant lookup using Prisma
+3. Route handlers can then set `x-tenant-id` header for downstream use
+
+**Usage in Route Handlers**:
+```typescript
+import { getTenantFromRequest } from '@/lib/tenant-context';
+
+export async function GET(request: NextRequest) {
+  const tenant = await getTenantFromRequest(request);
+  if (!tenant) {
+    return new NextResponse('Tenant not found', { status: 404 });
+  }
+  // Use tenant.id for database queries
+}
+```
 
 ## Files Created
 1. `middleware.ts` - Next.js middleware implementation

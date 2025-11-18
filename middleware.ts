@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTenantBySubdomain } from './lib/tenant';
 
-// Note: Next.js middleware runs on Edge runtime by default.
-// Prisma requires Node.js runtime. For production, consider:
-// 1. Using Prisma Accelerate (Edge-compatible)
-// 2. Caching tenant lookups
-// 3. Moving tenant resolution to API routes
-// For local development, this should work if middleware can access Node.js runtime.
+// Note: Next.js middleware runs on Edge runtime, which cannot use Prisma.
+// We extract the subdomain here and pass it as a header.
+// Route handlers (which run on Node.js runtime) will perform the actual tenant lookup.
 
 /**
  * Extract subdomain from hostname
@@ -45,40 +41,18 @@ export async function middleware(request: NextRequest) {
   // Extract subdomain from hostname
   const subdomain = extractSubdomain(hostname);
 
-  // If no subdomain found, continue without tenant context
-  // You might want to redirect or show an error page instead
-  if (!subdomain) {
-    // For local development, you might want to allow requests without subdomain
-    // or use a default tenant. For now, we'll continue without tenant context.
-    return NextResponse.next();
-  }
-
-  // Lookup tenant by subdomain
-  const tenant = await getTenantBySubdomain(subdomain);
-
-  // If tenant not found, you can:
-  // 1. Return 404
-  // 2. Redirect to a "tenant not found" page
-  // 3. Continue without tenant context
-  if (!tenant) {
-    // Option: Redirect to tenant-not-found page
-    // return NextResponse.redirect(new URL('/tenant-not-found', request.url));
-    
-    // Option: Return 404
-    // return new NextResponse('Tenant not found', { status: 404 });
-    
-    // For now, continue without tenant context
-    // You can customize this behavior based on your requirements
-    return NextResponse.next();
-  }
-
-  // Clone the request headers and add x-tenant-id
+  // Clone the request headers
   const requestHeaders = new Headers(request.headers);
-  requestHeaders.set('x-tenant-id', tenant.id);
-  requestHeaders.set('x-tenant-subdomain', tenant.subdomain);
-  requestHeaders.set('x-tenant-name', tenant.name);
+
+  // If subdomain found, add it as a header for route handlers to process
+  // Route handlers (running on Node.js runtime) will perform the actual tenant lookup
+  if (subdomain) {
+    requestHeaders.set('x-tenant-subdomain', subdomain);
+  }
 
   // Return response with modified headers
+  // Note: The actual tenant lookup will happen in route handlers/API routes
+  // which have access to Node.js runtime and can use Prisma
   return NextResponse.next({
     request: {
       headers: requestHeaders,
